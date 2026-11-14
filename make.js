@@ -124,9 +124,10 @@ fs.writeFileSync(__dirname + "/plugin/manifest.json", JSON.stringify({
 if (!js.startsWith("(")) throw new Error("plugin must start with (");
 if (/\b(let|const|class|async)\s|=>|\?\.|\?\?/.test(js)) throw new Error("plugin uses syntax Hermes won't run");
 const CLYDE = 7, OTHER = 8, patches = [];
-const Image = { render: props => props };
+const runtime = { jsx: (type, props) => props, jsxs: (type, props) => props };
+const React = { createElement: (type, props) => props };
 const vendetta = {
-    metro: { common: { ReactNative: { Image } } },
+    metro: { findByProps: (...p) => p.join() === "jsx,jsxs" ? runtime : undefined, common: { React } },
     ui: { assets: { getAssetIDByName: n => n === "ClydeIcon" ? CLYDE : undefined } },
     logger: console,
     patcher: {
@@ -140,9 +141,13 @@ const vendetta = {
 };
 const plugin = new Function("vendetta", "return " + js)(vendetta);
 plugin.onLoad();
-if (!String(Image.render({ source: CLYDE, style: 1 }).source.uri).startsWith("data:image/png;base64,iVBOR")) throw new Error("logo not swapped");
-if (Image.render({ source: CLYDE, style: 1 }).style !== 1) throw new Error("logo lost its style");
-if (Image.render({ source: OTHER }).source !== OTHER) throw new Error("other icons touched");
+for (const make of [runtime.jsx, runtime.jsxs, React.createElement]) {
+    const el = make("Image", { source: CLYDE, style: 1 });
+    if (!String(el.source.uri).startsWith("data:image/png;base64,iVBOR")) throw new Error("logo not swapped");
+    if (el.style !== 1) throw new Error("logo lost its style");
+    if (make("Image", { source: OTHER }).source !== OTHER) throw new Error("other icons touched");
+    if (make("View", null) !== null) throw new Error("propless element broken");
+}
 plugin.onUnload();
-if (Image.render({ source: CLYDE }).source !== CLYDE) throw new Error("unload left the moon");
+if (runtime.jsx("Image", { source: CLYDE }).source !== CLYDE || React.createElement("Image", { source: CLYDE }).source !== CLYDE) throw new Error("unload left the moon");
 console.log("plugin: ok, hash", JSON.parse(fs.readFileSync(__dirname + "/plugin/manifest.json")).hash.slice(0, 12));

@@ -1,30 +1,30 @@
 (function () {
     // Inkshell for Endcord Mobile: Midnight's moon where Discord shows its logo (the home button above the servers).
     // A theme link can only carry colours, so the icon lives in this plugin. make.js builds index.js from this file.
+    //
+    // The home button draws the asset "ClydeIcon". Newer React Native makes Image a plain function, so patching
+    // Image.render does nothing there; instead every element Discord creates is checked for that asset as its source.
     var MOON = { uri: "__MOON__" };
-    var LOGOS = ["ClydeIcon"];
-    var unpatch = null;
+    var unpatches = [];
 
     return {
         onLoad: function () {
-            var Image = vendetta.metro.common.ReactNative.Image;
-            if (!Image || typeof Image.render !== "function") return vendetta.logger.warn("Inkshell: can't reach Image to swap the logo");
-
-            var ids = {};
-            LOGOS.forEach(function (name) {
-                var id = vendetta.ui.assets.getAssetIDByName(name);
-                if (typeof id === "number") ids[id] = true;
-            });
+            var logo = vendetta.ui.assets.getAssetIDByName("ClydeIcon");
+            if (typeof logo !== "number") return vendetta.logger.warn("Inkshell: no ClydeIcon asset in this Discord");
 
             // white moon on transparent: Discord's tint colours it like the logo it replaces
-            unpatch = vendetta.patcher.before("render", Image, function (args) {
-                var props = args[0];
-                if (props && typeof props.source === "number" && ids[props.source]) args[0] = Object.assign({}, props, { source: MOON });
-            });
+            function swap(args) {
+                var props = args[1];
+                if (props && props.source === logo) args[1] = Object.assign({}, props, { source: MOON });
+            }
+
+            var runtime = vendetta.metro.findByProps("jsx", "jsxs"); // compiled JSX calls these
+            if (runtime) ["jsx", "jsxs"].forEach(function (name) { unpatches.push(vendetta.patcher.before(name, runtime, swap)); });
+            unpatches.push(vendetta.patcher.before("createElement", vendetta.metro.common.React, swap));
         },
         onUnload: function () {
-            if (unpatch) unpatch();
-            unpatch = null;
+            unpatches.forEach(function (unpatch) { unpatch(); });
+            unpatches = [];
         }
     };
 })()
