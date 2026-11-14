@@ -26,8 +26,9 @@ const semantic = {
     INPUT_BACKGROUND_DEFAULT: BG2, INPUT_BACKGROUND: BG2, CHAT_INPUT_BACKGROUND: BG2, MOBILE_CHATINPUT_BACKGROUND_DEFAULT: BG2,
     CHANNELTEXTAREA_BACKGROUND: BG2, REDESIGN_CHAT_INPUT_BACKGROUND: BG2,
     MOBILE_EXPRESSION_PICKER_BACKGROUND_DEFAULT: BG3, SPOILER_REVEALED_BACKGROUND: BG2, POLLS_NORMAL_IMAGE_BACKGROUND: BG2,
-    // the same for Discord before its 2025 refresh
-    BACKGROUND_PRIMARY: BG4, BACKGROUND_SECONDARY: BG3, BACKGROUND_TERTIARY: BG4, BACKGROUND_FLOATING: BG3,
+    // the same for Discord before its 2025 refresh. Never BACKGROUND_PRIMARY or KEYBOARD: Endcord's iOS side paints the
+    // keyboard with those, and on iOS 27 that leaves it with no visible keys
+    BACKGROUND_SECONDARY: BG3, BACKGROUND_TERTIARY: BG4, BACKGROUND_FLOATING: BG3,
     BACKGROUND_NESTED_FLOATING: BG2, BACKGROUND_MOBILE_PRIMARY: BG4, BACKGROUND_MOBILE_SECONDARY: BG3,
     BACKGROUND_MODIFIER_HOVER: HOVER, BACKGROUND_MODIFIER_ACTIVE: ACTIVE, BACKGROUND_MODIFIER_SELECTED: ACTIVE,
 
@@ -108,46 +109,57 @@ for (const [k, v] of Object.entries(raw)) if (!hex.test(v)) throw new Error("bad
 for (let i = 2; i <= 100; i++) if (okL(raw["NEUTRAL_" + i]) > okL(raw["NEUTRAL_" + (i - 1)]) + 1e-3) throw new Error("NEUTRAL order at " + i);
 console.log("inkshell.json:", Object.keys(semantic).length, "semantic,", Object.keys(raw).length, "raw; NEUTRAL_2", raw.NEUTRAL_2, "NEUTRAL_69", raw.NEUTRAL_69, "BLURPLE_50", raw.BLURPLE_50);
 
-// ---- the moon plugin: plugin/src.js with moon.png inlined, and a manifest whose hash Endcord checks ----
+// ---- OLED Black: Discord's own Midnight (Onyx) colours for every semantic colour ----
+// Onyx is Discord's pure-black theme, so its text and icons were already made to read on black. Endcord's Dark mode
+// is Discord's Ash theme underneath; naming every colour with Onyx's value makes it Onyx throughout. Both columns hold
+// the same, so Light mode stays black too.
+const KEYBOARD_KEYS = ["KEYBOARD", "BACKGROUND_PRIMARY"]; // see above: never set, the keyboard stays Discord's own
+const onyx = require("./discord-onyx.json"); // { name: [raw colour, opacity] }, taken from Discord's web client
+const oledSemantic = {};
+for (const [name, [rawName, opacity]] of Object.entries(onyx)) {
+    const value = discordRaw[rawName];
+    if (KEYBOARD_KEYS.includes(name) || !/^#[0-9a-f]{6}/i.test(value || "")) continue;
+    const hex6 = value.slice(0, 7);
+    const alpha = opacity >= 1 ? "" : Math.round(opacity * 255).toString(16).padStart(2, "0");
+    oledSemantic[name] = [hex6 + alpha, hex6 + alpha];
+}
+fs.writeFileSync(__dirname + "/oled.json", JSON.stringify({
+    name: "OLED Black",
+    description: "Discord's own pure-black Midnight colours everywhere, so no text gets lost. Leaves the keyboard alone.",
+    authors: [{ name: "ad3333m" }],
+    spec: 2,
+    semanticColors: oledSemantic,
+}, null, 1) + "\n");
+
+// self-check: black backgrounds, readable text on them and on buttons, keyboard untouched, in both themes
+function luminance(hex) {
+    const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.slice(i, i + 2), 16)));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+for (const t of [oledSemantic, semantic]) for (const k of KEYBOARD_KEYS) if (t[k]) throw new Error(k + " would repaint the keyboard");
+for (const k of ["BACKGROUND_BASE_LOW", "BACKGROUND_BASE_LOWER", "BACKGROUND_BASE_LOWEST", "CHAT_BACKGROUND"]) if (oledSemantic[k][0] !== "#000000") throw new Error(k + " isn't black");
+const readable = { TEXT_DEFAULT: 7, TEXT_STRONG: 7, MOBILE_TEXT_HEADING_PRIMARY: 7, INPUT_TEXT_DEFAULT: 7, TEXT_SUBTLE: 4.5, ICON_DEFAULT: 4.5, INTERACTIVE_TEXT_DEFAULT: 4.5, NAVIGATOR_HEADER_TINT: 4.5, TEXT_MUTED: 3, ICON_MUTED: 3 };
+for (const [k, min] of Object.entries(readable)) {
+    const c = contrast(oledSemantic[k][0], "#000000");
+    if (c < min) throw new Error(k + " only " + c.toFixed(1) + ":1 on black");
+}
+for (const [fg, bg] of [["CONTROL_PRIMARY_TEXT_DEFAULT", "CONTROL_PRIMARY_BACKGROUND_DEFAULT"], ["CONTROL_SECONDARY_TEXT_DEFAULT", "CONTROL_SECONDARY_BACKGROUND_DEFAULT"]]) {
+    if (!oledSemantic[fg] || !oledSemantic[bg] || oledSemantic[bg][0].length > 7) continue;
+    const c = contrast(oledSemantic[fg][0].slice(0, 7), oledSemantic[bg][0]);
+    if (c < 4.5) throw new Error(fg + " only " + c.toFixed(1) + ":1 on its button");
+}
+console.log("oled.json:", Object.keys(oledSemantic).length, "semantic; TEXT_DEFAULT", oledSemantic.TEXT_DEFAULT[0], contrast(oledSemantic.TEXT_DEFAULT[0], "#000000").toFixed(1) + ":1");
+
+// ---- the Midnight Logo plugin: plugin/src.js with moon.png inlined, and a manifest whose hash Endcord checks ----
 const js = fs.readFileSync(__dirname + "/plugin/src.js", "utf8")
     .replace("__MOON__", "data:image/png;base64," + fs.readFileSync(__dirname + "/moon.png").toString("base64"));
 fs.writeFileSync(__dirname + "/plugin/index.js", js);
 fs.writeFileSync(__dirname + "/plugin/manifest.json", JSON.stringify({
-    name: "Inkshell",
-    description: "Midnight's moon in place of Discord's logo, for the Inkshell theme.",
+    name: "Midnight Logo",
+    description: "Midnight's moon on the Messages button, with its spin, and typing dots while someone in your DMs is typing.",
     authors: [{ name: "ad3333m" }],
     main: "index.js",
     hash: require("crypto").createHash("sha256").update(js).digest("hex"),
 }, null, 4) + "\n");
-
-// self-check: Endcord runs `return <file>` on Hermes, so it must start with "(" and use nothing Hermes lacks
-if (!js.startsWith("(")) throw new Error("plugin must start with (");
-if (/\b(let|const|class|async)\s|=>|\?\.|\?\?/.test(js)) throw new Error("plugin uses syntax Hermes won't run");
-const CLYDE = 7, OTHER = 8, patches = [];
-const runtime = { jsx: (type, props) => props, jsxs: (type, props) => props };
-const React = { createElement: (type, props) => props };
-const vendetta = {
-    metro: { findByProps: (...p) => p.join() === "jsx,jsxs" ? runtime : undefined, common: { React } },
-    ui: { assets: { getAssetIDByName: n => n === "ClydeIcon" ? CLYDE : undefined } },
-    logger: console,
-    patcher: {
-        before(name, obj, cb) {
-            const orig = obj[name];
-            obj[name] = function (...args) { const r = cb(args); return orig.apply(this, Array.isArray(r) ? r : args); };
-            patches.push(() => { obj[name] = orig; });
-            return patches[patches.length - 1];
-        },
-    },
-};
-const plugin = new Function("vendetta", "return " + js)(vendetta);
-plugin.onLoad();
-for (const make of [runtime.jsx, runtime.jsxs, React.createElement]) {
-    const el = make("Image", { source: CLYDE, style: 1 });
-    if (!String(el.source.uri).startsWith("data:image/png;base64,iVBOR")) throw new Error("logo not swapped");
-    if (el.style !== 1) throw new Error("logo lost its style");
-    if (make("Image", { source: OTHER }).source !== OTHER) throw new Error("other icons touched");
-    if (make("View", null) !== null) throw new Error("propless element broken");
-}
-plugin.onUnload();
-if (runtime.jsx("Image", { source: CLYDE }).source !== CLYDE || React.createElement("Image", { source: CLYDE }).source !== CLYDE) throw new Error("unload left the moon");
-console.log("plugin: ok, hash", JSON.parse(fs.readFileSync(__dirname + "/plugin/manifest.json")).hash.slice(0, 12));
+require("./plugin/test.js"); // drives it against a fake Discord (needs react@18 + react-test-renderer@18)

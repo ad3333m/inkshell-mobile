@@ -1,11 +1,11 @@
 {
-    "name": "Inkshell",
-    "description": "Midnight's moon in place of Discord's logo, for the Inkshell theme.",
+    "name": "Midnight Logo",
+    "description": "Midnight's moon on the Messages button, with its spin, and typing dots while someone in your DMs is typing.",
     "authors": [
         {
             "name": "ad3333m"
         }
     ],
     "main": "index.js",
-    "hash": "b1af397abf424bc3dcbe3d8d0ed4d58822e408a827dcc673b6f56cc4123c2a3b"
+    "hash": "07bd3456027450e17f3276bdbcaaaad8b322f1f739bc79095bdb1ce592674c40"
 }

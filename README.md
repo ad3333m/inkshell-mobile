@@ -1,19 +1,26 @@
 # Inkshell for Endcord Mobile
 
-Inkshell's Discord look on the phone: ink greys on Midnight's layout, with Midnight's moon in place of Discord's logo.
+Themes and a logo plugin for Discord on the phone (Endcord Mobile). None of them touch the keyboard: Endcord's iOS
+side repaints the keyboard when a theme sets `KEYBOARD` or `BACKGROUND_PRIMARY`, which on iOS 27 leaves it with no
+visible keys, so these themes never set either.
 
-**Theme** (Settings → Themes → +, paste):
+**Themes** (Settings → Themes → +, paste, then tap it to switch it on):
 
-```
-https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/inkshell.json
-```
+- Inkshell: ink greys on Midnight's layout. Endcord's Dark is Inkshell black, Light is Inkshell white.
+  ```
+  https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/inkshell.json
+  ```
+- OLED Black: Discord's own pure-black Midnight (Onyx) colours for every colour, so text always reads. Keep Endcord on Dark or Auto.
+  ```
+  https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/oled.json
+  ```
 
-Endcord's Dark is Inkshell black, Light is Inkshell white.
-
-**Moon logo** (Settings → Plugins → +, paste). Themes can only carry colours, so the logo is a tiny plugin:
+**Midnight Logo** (Settings → Plugins → +, paste): Midnight's moon on the Messages button at the top of the server
+list. It spins when you open your DMs, and turns into bouncing typing dots while someone in your DMs is typing.
 
 ```
 https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/plugin/
 ```
 
-Rebuild after changing colours, `plugin/src.js` or `moon.png`: `node make.js` (also checks both).
+Rebuild after changing colours, `plugin/src.js` or `moon.png`: `node make.js` (checks the themes' contrast and runs
+`plugin/test.js`, which needs `npm i --no-save react@18 react-test-renderer@18`).
