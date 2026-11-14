@@ -1,0 +1,11 @@
+{
+    "name": "Inkshell",
+    "description": "Midnight's moon in place of Discord's logo, for the Inkshell theme.",
+    "authors": [
+        {
+            "name": "ad3333m"
+        }
+    ],
+    "main": "index.js",
+    "hash": "3aa9ce3e07cc408a516904453336d8780331078b86309aba2d219b1871163c20"
+}
