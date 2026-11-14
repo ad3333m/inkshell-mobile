@@ -1,11 +1,11 @@
 {
     "name": "Rounded",
-    "description": "Rounded Discord's softer corners on the phone: cards, rows, inputs, the chat bar and more. Never the keyboard.",
+    "description": "Rounded Discord's softer corners on the phone: every rounded corner Discord draws gets rounder. Never the keyboard.",
     "authors": [
         {
             "name": "ad3333m"
         }
     ],
     "main": "index.js",
-    "hash": "f220025ab72ee4d6cd8722d414db7ea6f459373a66b3a2720e12684fde7f478d"
+    "hash": "8b29880f432e5681f7cbe63db81b9e8ae4044adcf6d67b8e96a134174fa2caf7"
 }

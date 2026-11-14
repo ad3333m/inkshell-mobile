@@ -1,56 +1,67 @@
 (function () {
     // Rounded for Endcord Mobile: Rounded Discord's softer corners on the phone. A theme link can only carry colours,
     // so the corners live in this plugin.
-    // Discord's mobile corners come from tokens (discord_common/js/packages/tokens, Discord 355): `radii` (xs 4 … xxl 32)
-    // and per-component radius tokens under `modules` (cards, table rows, inputs, the chat bar, channel rows, voice
-    // tiles…) that components resolve on every render through useToken. Rounding those resolves rounds what's already
-    // on screen at its next render.
+    // Every element Discord creates goes through the JSX runtime, which Endcord has already wrapped (spitroast keeps one
+    // wrapper per function, and Discord's modules hold that wrapper), so a hook here sees them all, even screens drawn
+    // before plugins load, at their next render. Corner radii in an element's style get rounder; nothing else changes.
+    // Rounding Discord's radius tokens instead did nothing visible: most styles copy the numbers when they're built.
     // The loader runs `return <file>`, so it must start with "(". Hermes: var only, no async/classes.
     "use strict";
     var log = vendetta.logger || console;
-
-    // Corners Discord means to keep as they are: the keyboard and media keyboard (never touched), and the guild-bar
-    // squircle, whose shape is how a selected server stands out from the round ones
-    var KEEP = /KEYBOARD|GUILD_ITEM_SELECTED|GUILD_FOLDER/;
+    var KEYS = ["borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius",
+        "borderTopStartRadius", "borderTopEndRadius", "borderBottomStartRadius", "borderBottomEndRadius"];
     var undo = [];
 
     // 4 → 9, 8 → 14, 12 → 19, 16 → 24, 24 → 34; square stays square, pills and circles stay as they are
     function rounder(r) {
-        return typeof r === "number" && r > 0 && r < 100 ? Math.round(r * 1.25 + 4) : r;
+        return r > 0 && r < 100 ? Math.round(r * 1.25 + 4) : r;
+    }
+
+    // Each style object is looked at once: its rounded copy (or itself, with nothing to round) is remembered
+    var seen = new WeakMap();
+    var copies = new WeakSet();
+    function roundStyle(s) {
+        if (!s || typeof s !== "object") return s;
+        if (Array.isArray(s)) {
+            var out = null;
+            for (var i = 0; i < s.length; i++) {
+                var r = roundStyle(s[i]);
+                if (r !== s[i]) {
+                    out = out || s.slice();
+                    out[i] = r;
+                }
+            }
+            return out || s;
+        }
+        if (copies.has(s)) return s;
+        var known = seen.get(s);
+        if (known) return known;
+        var copy = null;
+        for (var k = 0; k < KEYS.length; k++) {
+            var v = s[KEYS[k]];
+            if (typeof v === "number" && rounder(v) !== v) {
+                copy = copy || Object.assign({}, s);
+                copy[KEYS[k]] = rounder(v);
+            }
+        }
+        if (copy) copies.add(copy);
+        seen.set(s, copy || s);
+        return copy || s;
+    }
+
+    function onElement(args, el) {
+        var props = el && el.props;
+        if (!props || !props.style) return undefined;
+        var style = roundStyle(props.style);
+        if (style !== props.style) props.style = style; // the runtime made this props object for this element alone
+        return undefined;
     }
 
     return {
         onLoad: function () {
-            var mod = vendetta.metro.findByProps("SemanticColor");
-            var tokens = mod && mod.default;
-            if (!tokens || !tokens.modules || !tokens.radii) return log.warn("Rounded: Discord's radius tokens not found");
-
-            var count = 0;
-            Object.keys(tokens.modules).forEach(function (group) {
-                var g = tokens.modules[group];
-                Object.keys(g || {}).forEach(function (key) {
-                    if (!/RADIUS/.test(key) || KEEP.test(key) || !g[key] || typeof g[key].resolve !== "function") return;
-                    undo.push(vendetta.patcher.after("resolve", g[key], function (args, r) { return rounder(r); }));
-                    count++;
-                });
-            });
-
-            // radii feed styles Discord builds after this point (new screens, and every style after a theme change)
-            var before = {};
-            Object.keys(tokens.radii).forEach(function (k) {
-                before[k] = tokens.radii[k];
-                try {
-                    tokens.radii[k] = rounder(tokens.radii[k]);
-                } catch (e) { }
-            });
-            undo.push(function () {
-                Object.keys(before).forEach(function (k) {
-                    try {
-                        tokens.radii[k] = before[k];
-                    } catch (e) { }
-                });
-            });
-            log.log("Rounded: " + count + " corner tokens rounded");
+            var runtime = vendetta.metro.findByProps("jsx", "jsxs");
+            if (!runtime) return log.warn("Rounded: Discord's JSX runtime not found");
+            ["jsx", "jsxs"].forEach(function (fn) { undo.push(vendetta.patcher.after(fn, runtime, onElement)); });
         },
         onUnload: function () {
             undo.forEach(function (fn) {

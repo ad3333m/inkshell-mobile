@@ -168,7 +168,7 @@ require("./plugin/test.js"); // drives it against a fake Discord (needs react@18
 const roundedJs = fs.readFileSync(__dirname + "/rounded/index.js", "utf8");
 fs.writeFileSync(__dirname + "/rounded/manifest.json", JSON.stringify({
     name: "Rounded",
-    description: "Rounded Discord's softer corners on the phone: cards, rows, inputs, the chat bar and more. Never the keyboard.",
+    description: "Rounded Discord's softer corners on the phone: every rounded corner Discord draws gets rounder. Never the keyboard.",
     authors: [{ name: "ad3333m" }],
     main: "index.js",
     hash: require("crypto").createHash("sha256").update(roundedJs).digest("hex"),
