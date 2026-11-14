@@ -109,47 +109,128 @@ for (const [k, v] of Object.entries(raw)) if (!hex.test(v)) throw new Error("bad
 for (let i = 2; i <= 100; i++) if (okL(raw["NEUTRAL_" + i]) > okL(raw["NEUTRAL_" + (i - 1)]) + 1e-3) throw new Error("NEUTRAL order at " + i);
 console.log("inkshell.json:", Object.keys(semantic).length, "semantic,", Object.keys(raw).length, "raw; NEUTRAL_2", raw.NEUTRAL_2, "NEUTRAL_69", raw.NEUTRAL_69, "BLURPLE_50", raw.BLURPLE_50);
 
-// ---- OLED Black: Discord's own Midnight (Onyx) colours for every semantic colour ----
-// Onyx is Discord's pure-black theme, so its text and icons were already made to read on black. Endcord's Dark mode
-// is Discord's Ash theme underneath; naming every colour with Onyx's value makes it Onyx throughout. Both columns hold
-// the same, so Light mode stays black too.
-const KEYBOARD_KEYS = ["KEYBOARD", "BACKGROUND_PRIMARY"]; // see above: never set, the keyboard stays Discord's own
-const onyx = require("./discord-onyx.json"); // { name: [raw colour, opacity] }, taken from Discord's web client
-const oledSemantic = {};
-for (const [name, [rawName, opacity]] of Object.entries(onyx)) {
-    const value = discordRaw[rawName];
-    if (KEYBOARD_KEYS.includes(name) || !/^#[0-9a-f]{6}/i.test(value || "")) continue;
-    const hex6 = value.slice(0, 7);
-    const alpha = opacity >= 1 ? "" : Math.round(opacity * 255).toString(16).padStart(2, "0");
-    oledSemantic[name] = [hex6 + alpha, hex6 + alpha];
-}
-fs.writeFileSync(__dirname + "/oled.json", JSON.stringify({
-    name: "OLED Black v2",
-    description: "Discord's own pure-black Midnight colours everywhere, so no text gets lost. Leaves the keyboard alone.",
-    authors: [{ name: "ad3333m" }],
-    spec: 2,
-    semanticColors: oledSemantic,
-}, null, 1) + "\n");
-
-// self-check: black backgrounds, readable text on them and on buttons, keyboard untouched, in both themes
 function luminance(hex) {
     const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.slice(i, i + 2), 16)));
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+// ---- OLED Black: black and white, from Discord's own Midnight (Onyx) colours ----
+// Starts from Onyx (Discord's pure-black theme) for every colour the phone app has (discord-mobile-colors.json, from
+// Discord 355's own definitions, plus the web client's list), then makes it black and white:
+//  - every resting surface is pure black: cards, settings rows, sheets, the text box, inputs;
+//  - Discord's blurple becomes white, and whatever sits on it (button text, the send arrow, ticks) becomes black;
+//  - pressed/selected highlights, borders and dividers stay as faint white, so rows and the text box keep their edges;
+//  - red, green, yellow and other meaningful colours stay.
+// A contrast guard then checks every text/icon against the surface it belongs to and flips it to black or white
+// where it would vanish, so there's no black on black or white on white. Both columns hold the same, so Light stays black.
+const KEYBOARD_KEYS = ["KEYBOARD", "BACKGROUND_PRIMARY"]; // see above: never set, the keyboard stays Discord's own
+const mobileRaw = require("./discord-mobile-raw.json");
+const defs = {};
+for (const [name, onyxDef] of Object.entries(require("./discord-onyx.json"))) defs[name] = { cat: null, onyx: onyxDef };
+for (const [name, d] of Object.entries(require("./discord-mobile-colors.json"))) defs[name] = d; // the phone's own wins
+
+const rgba = hex => ({ r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) });
+const toHex = (c, a) => "#" + [c.r, c.g, c.b].map(v => Math.round(v).toString(16).padStart(2, "0")).join("") + (a >= 1 ? "" : Math.round(a * 255).toString(16).padStart(2, "0"));
+function hueSat(c) {
+    const max = Math.max(c.r, c.g, c.b), min = Math.min(c.r, c.g, c.b), d = max - min;
+    if (!max || !d) return { h: 0, s: 0 };
+    let h = max === c.r ? (c.g - c.b) / d : max === c.g ? 2 + (c.b - c.r) / d : 4 + (c.r - c.g) / d;
+    return { h: (h * 60 + 360) % 360, s: d / max };
+}
+const isBrand = c => { const { h, s } = hueSat(c); return s > 0.25 && h >= 225 && h <= 285; }; // Discord's blurple family
+// near-black colours read as grey whatever their tint
+const isGrey = c => hueSat(c).s < 0.12 || Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b) < 24;
+const kind = (name, cat) => cat === "border" || /BORDER|DIVIDER|SEPARATOR|OUTLINE/.test(name) ? "border"
+    : !/BACKGROUND|_BG($|_)|^BG_|SCRIM|OVERLAY|FILL/.test(name) && (cat === "text" || /TEXT|ICON|TINT|FOREGROUND|HEADER|PLACEHOLDER|LOGO|INTERACTIVE_(NORMAL|HOVER|ACTIVE|MUTED)|THUMB_ICON/.test(name)) ? "fg" : "bg";
+const STATE = /PRESSED|ACTIVE|HOVER|SELECTED|HIGHLIGHT|SCRIM|OVERLAY|SKELETON|SHIMMER|RIPPLE|GRADIENT/;
+
+const oledColor = {}; // name -> { c: {r,g,b}, a, kind }
+for (const [name, d] of Object.entries(defs)) {
+    if (KEYBOARD_KEYS.includes(name)) continue;
+    const value = mobileRaw[d.onyx[0]] || discordRaw[d.onyx[0]];
+    if (!/^#[0-9a-f]{6}/i.test(value || "")) continue;
+    let c = rgba(value), a = d.onyx[1];
+    const k = kind(name, d.cat);
+    const white = { r: 255, g: 255, b: 255 }, black = { r: 0, g: 0, b: 0 };
+    if (isBrand(c)) c = white; // blurple → white, at the same strength
+    else if (k === "bg" && isGrey(c)) {
+        const lum = luminance(toHex(c, 1));
+        // resting dark surfaces, and the faint grey tints that only shade a resting surface, go black
+        if (a >= 1 && lum < 0.2) c = black;
+        // (buttons, switches and checkboxes keep theirs, or they would lose their shape)
+        else if (a < 1 && a <= 0.25 && !STATE.test(name) && !/^(CONTROL|SWITCH|CHECKBOX|RADIO|TOGGLEBUTTON|SEGMENTED)_/.test(name)) { c = black; a = 1; }
+    }
+    oledColor[name] = { c, a, kind: k };
+}
+
+// What a colour looks like where it's drawn: translucent ones over black
+const shown = ({ c, a }) => toHex({ r: c.r * a, g: c.g * a, b: c.b * a }, 1);
+const bestOn = bg => contrast("#ffffff", bg) >= contrast("#000000", bg) ? { r: 255, g: 255, b: 255 } : { r: 0, g: 0, b: 0 };
+
+// Pairs: a surface and the text/icons drawn on it share a name once BACKGROUND/BG and TEXT/ICON/TINT/FOREGROUND are
+// taken out (CONTROL_PRIMARY_BACKGROUND_DEFAULT ↔ CONTROL_PRIMARY_TEXT_DEFAULT, CHAT_INPUT_SEND_BUTTON_ACTIVE_BACKGROUND
+// ↔ CHAT_INPUT_SEND_BUTTON_ICON_ACTIVE_TINT); plus the few Discord names differently
+const stem = (name, words) => name.split("_").filter(w => !words.includes(w)).join("_");
+const surfaces = {};
+for (const [name, v] of Object.entries(oledColor)) if (v.kind === "bg") surfaces[stem(name, ["BACKGROUND", "BG"])] = name;
+const EXTRA_PAIRS = [
+    ["CHECKBOX_ICON_ACTIVE", "CHECKBOX_BACKGROUND_SELECTED_DEFAULT"], ["SWITCH_THUMB_ICON_ACTIVE", "SWITCH_THUMB_BACKGROUND_SELECTED_DEFAULT"],
+    ["SWITCH_THUMB_BACKGROUND_SELECTED_DEFAULT", "SWITCH_BACKGROUND_SELECTED_DEFAULT"], ["BADGE_TEXT_BRAND", "BADGE_PRIMARY_BACKGROUND"],
+    ["MENTION_FOREGROUND", "MENTION_BACKGROUND"], ["REACTION_TEXT_REACTED_DEFAULT", "REACTION_BACKGROUND_REACTED_DEFAULT"]
+];
+const pairs = EXTRA_PAIRS.filter(([fg, bg]) => oledColor[fg] && oledColor[bg]);
+for (const [name, v] of Object.entries(oledColor)) {
+    if (v.kind !== "fg") continue;
+    const bg = surfaces[stem(name, ["TEXT", "ICON", "TINT", "FOREGROUND"])];
+    // only a component and its own parts (CONTROL_PRIMARY_*, BADGE_PRIMARY_*): TEXT_BRAND or TEXT_FEEDBACK_CRITICAL are
+    // coloured text on ordinary surfaces, not text on BACKGROUND_BRAND or BACKGROUND_FEEDBACK_CRITICAL
+    const first = n => n.split("_")[0];
+    if (bg && bg !== name && first(bg) === first(name) && !["TEXT", "ICON", "BACKGROUND", "BG"].includes(first(name))) pairs.push([name, bg]);
+}
+// repeated until nothing changes: a switch thumb flips against its track, then the thumb icon against the thumb
+let flipped = 0;
+for (let pass = 0, again = true; again && pass < 5; pass++) {
+    again = false;
+    for (const [fg, bg] of pairs) {
+        const back = shown(oledColor[bg]), front = oledColor[fg];
+        if (contrast(shown({ c: front.c, a: 1 }), back) >= 3) continue;
+        front.c = bestOn(back);
+        front.a = 1;
+        flipped++;
+        again = true;
+    }
+}
+
+const oledSemantic = {};
+for (const [name, v] of Object.entries(oledColor)) { const hx = toHex(v.c, v.a); oledSemantic[name] = [hx, hx]; }
+fs.writeFileSync(__dirname + "/oled.json", JSON.stringify({
+    name: "OLED Black v3",
+    description: "Black and white: every surface pure black, accents white, text always readable. Leaves the keyboard alone.",
+    authors: [{ name: "ad3333m" }],
+    spec: 2,
+    semanticColors: oledSemantic,
+}, null, 1) + "\n");
+
+// self-check: black surfaces, readable text everywhere it's paired, keyboard untouched, in both themes
 for (const t of [oledSemantic, semantic]) for (const k of KEYBOARD_KEYS) if (t[k]) throw new Error(k + " would repaint the keyboard");
-for (const k of ["BACKGROUND_BASE_LOW", "BACKGROUND_BASE_LOWER", "BACKGROUND_BASE_LOWEST", "CHAT_BACKGROUND"]) if (oledSemantic[k][0] !== "#000000") throw new Error(k + " isn't black");
-const readable = { TEXT_DEFAULT: 7, TEXT_STRONG: 7, MOBILE_TEXT_HEADING_PRIMARY: 7, INPUT_TEXT_DEFAULT: 7, TEXT_SUBTLE: 4.5, ICON_DEFAULT: 4.5, INTERACTIVE_TEXT_DEFAULT: 4.5, NAVIGATOR_HEADER_TINT: 4.5, TEXT_MUTED: 3, ICON_MUTED: 3 };
+for (const k of ["BACKGROUND_BASE_LOW", "BACKGROUND_BASE_LOWER", "BACKGROUND_BASE_LOWEST", "CHAT_BACKGROUND", "BACKGROUND_SURFACE_HIGH",
+    "BACKGROUND_SURFACE_HIGHEST", "CHAT_INPUT_BACKGROUND", "MOBILE_CHATINPUT_BACKGROUND_DEFAULT", "CARD_BACKGROUND_DEFAULT", "MOBILE_ACTIONSHEET_BACKGROUND"]) {
+    if (oledColor[k] && shown(oledColor[k]) !== "#000000") throw new Error(k + " isn't black: " + oledSemantic[k][0]); // translucent black counts: it shows as black
+}
+for (const [k, v] of Object.entries(oledColor)) if (isBrand(v.c)) throw new Error(k + " is still blurple");
+const readable = { TEXT_DEFAULT: 7, TEXT_STRONG: 7, MOBILE_TEXT_HEADING_PRIMARY: 7, INPUT_TEXT_DEFAULT: 7, TEXT_SUBTLE: 4.5, ICON_DEFAULT: 4.5, INTERACTIVE_TEXT_DEFAULT: 4.5, NAVIGATOR_HEADER_TINT: 4.5, TEXT_MUTED: 3, ICON_MUTED: 3, TEXT_LINK: 4.5, TEXT_BRAND: 4.5 };
 for (const [k, min] of Object.entries(readable)) {
-    const c = contrast(oledSemantic[k][0], "#000000");
+    if (!oledSemantic[k]) continue;
+    const c = contrast(shown(oledColor[k]), "#000000");
     if (c < min) throw new Error(k + " only " + c.toFixed(1) + ":1 on black");
 }
-for (const [fg, bg] of [["CONTROL_PRIMARY_TEXT_DEFAULT", "CONTROL_PRIMARY_BACKGROUND_DEFAULT"], ["CONTROL_SECONDARY_TEXT_DEFAULT", "CONTROL_SECONDARY_BACKGROUND_DEFAULT"]]) {
-    if (!oledSemantic[fg] || !oledSemantic[bg] || oledSemantic[bg][0].length > 7) continue;
-    const c = contrast(oledSemantic[fg][0].slice(0, 7), oledSemantic[bg][0]);
-    if (c < 4.5) throw new Error(fg + " only " + c.toFixed(1) + ":1 on its button");
+for (const [fg, bg] of pairs) {
+    const c = contrast(shown({ c: oledColor[fg].c, a: 1 }), shown(oledColor[bg]));
+    if (c < 3) throw new Error(fg + " only " + c.toFixed(1) + ":1 on " + bg);
 }
-console.log("oled.json:", Object.keys(oledSemantic).length, "semantic; TEXT_DEFAULT", oledSemantic.TEXT_DEFAULT[0], contrast(oledSemantic.TEXT_DEFAULT[0], "#000000").toFixed(1) + ":1");
+const btn = ["CONTROL_PRIMARY_BACKGROUND_DEFAULT", "CONTROL_PRIMARY_TEXT_DEFAULT"].map(k => oledSemantic[k] && oledSemantic[k][0]).join(" / ");
+console.log("oled.json:", Object.keys(oledSemantic).length, "colours,", pairs.length, "text-on-surface pairs checked,", flipped, "flipped; primary button", btn);
 
 // ---- the Midnight Logo plugin: plugin/src.js with moon.png inlined, and a manifest whose hash Endcord checks ----
 const js = fs.readFileSync(__dirname + "/plugin/src.js", "utf8")

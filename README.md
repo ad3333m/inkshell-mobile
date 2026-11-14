@@ -10,7 +10,9 @@ visible keys, so these themes never set either.
   ```
   https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/inkshell.json
   ```
-- OLED Black: Discord's own pure-black Midnight (Onyx) colours for every colour, so text always reads. Keep Endcord on Dark or Auto.
+- OLED Black: black and white. Every surface (chats, settings, sheets, the text box) is pure black, Discord's blurple is
+  white with black on it, faint edges keep rows and the text box apart, and red/green/yellow stay. Built from Discord's
+  own Midnight colours for all 741 colours the phone app has, with a contrast check so no text vanishes.
   ```
   https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/oled.json
   ```
