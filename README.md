@@ -22,5 +22,12 @@ list. It spins when you open your DMs, and turns into bouncing typing dots while
 https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/plugin/
 ```
 
+**Rounded** (Settings → Plugins → +, paste): Rounded Discord's softer corners: cards, rows, inputs, the chat bar,
+channel rows, voice tiles. Square things stay square, pills stay pills, and the keyboard is never touched.
+
+```
+https://raw.githubusercontent.com/ad3333m/inkshell-mobile/main/rounded/
+```
+
 Rebuild after changing colours, `plugin/src.js` or `moon.png`: `node make.js` (checks the themes' contrast and runs
 `plugin/test.js`, which needs `npm i --no-save react@18 react-test-renderer@18`).

@@ -4,9 +4,11 @@
     // make.js builds index.js from this file (it inlines moon.png). The loader runs `return <file>`, so it must start
     // with "(". Hermes: var only, no async/classes.
     //
-    // Discord draws that button in modules/guilds_bar/native/GuildsBarMessages.tsx (Discord 355): a memo component
-    // returning GuildsBarAnimatedItemWrapper with the icon (ChatIcon) as `children`, and `selected` while DMs are open.
-    // Its own code keeps a private copy of jsx(), so the icon has to be swapped in that component's output.
+    // Discord draws that button in modules/guilds_bar/native/GuildsBarMessages.tsx (Discord 355): it creates a
+    // GuildsBarAnimatedItemWrapper element with the chat-bubble ChatIcon as `children`, and `selected` while DMs are
+    // open. The guild bar is on screen before plugins load, so patching that component's render comes too late;
+    // Endcord's own element hook (bunny.api.react.jsx.onJsxCreate) sees every element as it's created, so the icon is
+    // swapped there, by component name.
     "use strict";
     var metro = vendetta.metro;
     var common = metro.common;
@@ -150,27 +152,16 @@
             })));
     }
 
-    // ---- patching the Messages button ----
+    // ---- swapping the Messages button's icon ----
 
-    function findFile(path) {
-        try {
-            var b = G.bunny;
-            return b && b.metro && typeof b.metro.findByFilePath === "function" ? b.metro.findByFilePath(path) : undefined;
-        } catch (e) {
-            return undefined;
-        }
-    }
+    var WRAPPER = "GuildsBarAnimatedItemWrapper";
+    var ICONS = ["ChatIcon", "ClydeIcon"]; // the chat bubble now; Clyde on older Discord
 
-    // A component's render, whatever form it's exported in: function, memo, forwardRef, memo of forwardRef
-    function afterRender(mod, key, cb) {
-        var after = vendetta.patcher.after;
-        var c = mod && mod[key];
-        var wrap = function (args, res) { return cb(res); };
-        if (typeof c === "function") return after(key, mod, wrap);
-        if (c && typeof c.type === "function") return after("type", c, wrap);
-        if (c && c.type && typeof c.type.render === "function") return after("render", c.type, wrap);
-        if (c && typeof c.render === "function") return after("render", c, wrap);
-        return null;
+    // Every guild-bar item goes through the wrapper; only the Messages button has one of these icons inside
+    function swapIcon(Component, el) {
+        var icon = el && el.props && el.props.children;
+        if (!icon || !icon.type || ICONS.indexOf(icon.type.name) === -1) return undefined;
+        return React.cloneElement(el, null, h(MoonLogo, { selected: !!el.props.selected, color: icon.props && icon.props.color }));
     }
 
     return {
@@ -178,14 +169,10 @@
             ChannelStore = metro.findByStoreName("ChannelStore");
             UserStore = metro.findByStoreName("UserStore");
 
-            var button = findFile("modules/guilds_bar/native/GuildsBarMessages.tsx");
-            var un = afterRender(button, "default", function (res) {
-                if (!res || !res.props || !res.props.children) return res;
-                var icon = res.props.children;
-                return React.cloneElement(res, null, h(MoonLogo, { selected: !!res.props.selected, color: icon.props && icon.props.color }));
-            });
-            if (!un) return log.warn("Midnight Logo: Messages button not found in this Discord");
-            unpatches.push(un);
+            var jsx = G.bunny && G.bunny.api && G.bunny.api.react && G.bunny.api.react.jsx;
+            if (!jsx || typeof jsx.onJsxCreate !== "function") return log.warn("Midnight Logo: needs Endcord's element hook (bunny.api.react.jsx)");
+            jsx.onJsxCreate(WRAPPER, swapIcon);
+            unpatches.push(function () { jsx.deleteJsxCreate(WRAPPER, swapIcon); });
 
             var D = common.FluxDispatcher;
             [["TYPING_START", onTypingStart], ["TYPING_STOP", onTypingEnd], ["MESSAGE_CREATE", onTypingEnd]].forEach(function (s) {

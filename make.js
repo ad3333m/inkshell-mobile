@@ -163,3 +163,14 @@ fs.writeFileSync(__dirname + "/plugin/manifest.json", JSON.stringify({
     hash: require("crypto").createHash("sha256").update(js).digest("hex"),
 }, null, 4) + "\n");
 require("./plugin/test.js"); // drives it against a fake Discord (needs react@18 + react-test-renderer@18)
+
+// ---- the Rounded plugin: rounded/index.js as written, with its manifest hash ----
+const roundedJs = fs.readFileSync(__dirname + "/rounded/index.js", "utf8");
+fs.writeFileSync(__dirname + "/rounded/manifest.json", JSON.stringify({
+    name: "Rounded",
+    description: "Rounded Discord's softer corners on the phone: cards, rows, inputs, the chat bar and more. Never the keyboard.",
+    authors: [{ name: "ad3333m" }],
+    main: "index.js",
+    hash: require("crypto").createHash("sha256").update(roundedJs).digest("hex"),
+}, null, 4) + "\n");
+require("./rounded/test.js");

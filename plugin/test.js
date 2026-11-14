@@ -27,12 +27,31 @@ const Animated = {
 };
 const RN = { View: p => h("View", p, p.children), Animated, Easing: { inOut: () => 0, ease: 0 } };
 
-// Discord 355's Messages button: memo returning the wrapper with ChatIcon as children
-const ChatIcon = p => h("ChatIcon", p);
-const Wrapper = p => h("Wrapper", p, p.children);
+// Endcord's element hook: every element Discord creates passes callbacks registered under its component's name
+const hooks = new Map();
+globalThis.bunny = {
+    api: {
+        react: {
+            jsx: {
+                onJsxCreate: (name, cb) => hooks.set(name, (hooks.get(name) || []).concat(cb)),
+                deleteJsxCreate: (name, cb) => hooks.set(name, (hooks.get(name) || []).filter(f => f !== cb))
+            }
+        }
+    }
+};
+const jsx = (type, props, child) => {
+    let el = h(type, props, child);
+    for (const cb of (typeof type === "function" && hooks.get(type.name)) || []) { const r = cb(type, el); if (r !== undefined) el = r; }
+    return el;
+};
+
+// Discord 355's guild bar: the Messages button is a GuildsBarAnimatedItemWrapper holding ChatIcon; servers hold their icon
+function ChatIcon(p) { return h("ChatIcon", p); }
+function GuildIcon(p) { return h("GuildIcon", p); }
+function GuildsBarAnimatedItemWrapper(p) { return h("Wrapper", p, p.children); }
 let selected = false;
-const GuildsBarMessages = { default: { $$typeof: Symbol.for("react.memo"), type: function GuildsBarMessages() { return h(Wrapper, { selected, label: "Messages" }, h(ChatIcon, { color: "#abcdef" })); } } };
-globalThis.bunny = { metro: { findByFilePath: p => p === "modules/guilds_bar/native/GuildsBarMessages.tsx" ? GuildsBarMessages : undefined } };
+const GuildsBarMessages = { default: { type: () => jsx(GuildsBarAnimatedItemWrapper, { selected, label: "Messages" }, jsx(ChatIcon, { color: "#abcdef" })) } };
+const serverItem = () => jsx(GuildsBarAnimatedItemWrapper, { selected: false, label: "A server" }, jsx(GuildIcon, { color: "#abcdef" }));
 
 const subs = {};
 const Dispatcher = {
@@ -60,7 +79,8 @@ plugin.onLoad();
 
 const render = () => GuildsBarMessages.default.type();
 let el = render();
-assert.strictEqual(el.type, Wrapper, "keeps Discord's button wrapper (badges, press, selection)");
+assert.strictEqual(el.type, GuildsBarAnimatedItemWrapper, "keeps Discord's button wrapper (badges, press, selection)");
+assert.strictEqual(serverItem().props.children.type, GuildIcon, "server icons untouched");
 assert.strictEqual(el.props.label, "Messages");
 assert.strictEqual(el.props.children.props.color, "#abcdef", "moon takes the icon's colour");
 
