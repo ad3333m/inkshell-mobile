@@ -93,7 +93,7 @@ for (const [key, value] of Object.entries(discordRaw)) {
 }
 
 const theme = {
-    name: "Inkshell",
+    name: "Inkshell v2",
     description: "Inkshell's ink greys on Midnight's layout. Endcord's Dark is Inkshell black, Light is Inkshell white.",
     authors: [{ name: "ad3333m" }],
     spec: 2,
@@ -124,7 +124,7 @@ for (const [name, [rawName, opacity]] of Object.entries(onyx)) {
     oledSemantic[name] = [hex6 + alpha, hex6 + alpha];
 }
 fs.writeFileSync(__dirname + "/oled.json", JSON.stringify({
-    name: "OLED Black",
+    name: "OLED Black v2",
     description: "Discord's own pure-black Midnight colours everywhere, so no text gets lost. Leaves the keyboard alone.",
     authors: [{ name: "ad3333m" }],
     spec: 2,
