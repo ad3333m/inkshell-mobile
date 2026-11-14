@@ -1,12 +1,13 @@
 (function () {
     // Rounded for Endcord Mobile: Rounded Discord's softer corners on the phone. A theme link can only carry colours,
     // so the corners live in this plugin.
-    // Every element Discord creates goes through the JSX runtime, which Endcord has already wrapped (spitroast keeps one
-    // wrapper per function, and Discord's modules hold that wrapper), so a hook here sees them all, even screens drawn
-    // before plugins load, at their next render. Corner radii in an element's style get rounder; nothing else changes.
-    // Rounding Discord's radius tokens instead did nothing visible: most styles copy the numbers when they're built.
+    // Every box Discord draws is React Native's View (Pressable, cards, rows, inputs, buttons all end in one), and View
+    // is a forwardRef whose `render` React reads on every render. Rounding the corner radii in its style there reaches
+    // everything, including screens drawn before plugins load, at their next render. Images get the same.
+    // (v1 rounded Discord's radius tokens and v2 hooked the JSX runtime; neither reached the screen.)
     // The loader runs `return <file>`, so it must start with "(". Hermes: var only, no async/classes.
     "use strict";
+    var RN = vendetta.metro.common.ReactNative;
     var log = vendetta.logger || console;
     var KEYS = ["borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius",
         "borderTopStartRadius", "borderTopEndRadius", "borderBottomStartRadius", "borderBottomEndRadius"];
@@ -49,19 +50,24 @@
         return copy || s;
     }
 
-    function onElement(args, el) {
-        var props = el && el.props;
-        if (!props || !props.style) return undefined;
+    function roundProps(args) {
+        var props = args[0];
+        if (!props || !props.style) return;
         var style = roundStyle(props.style);
-        if (style !== props.style) props.style = style; // the runtime made this props object for this element alone
-        return undefined;
+        if (style !== props.style) args[0] = Object.assign({}, props, { style: style });
     }
 
     return {
         onLoad: function () {
-            var runtime = vendetta.metro.findByProps("jsx", "jsxs");
-            if (!runtime) return log.warn("Rounded: Discord's JSX runtime not found");
-            ["jsx", "jsxs"].forEach(function (fn) { undo.push(vendetta.patcher.after(fn, runtime, onElement)); });
+            var count = 0;
+            ["View", "Image", "ImageBackground"].forEach(function (name) {
+                var C = RN[name];
+                var target = C && typeof C.render === "function" ? C : null; // forwardRef
+                if (!target) return;
+                undo.push(vendetta.patcher.before("render", target, roundProps));
+                count++;
+            });
+            if (!count) log.warn("Rounded: React Native's View isn't a forwardRef here, nothing to round");
         },
         onUnload: function () {
             undo.forEach(function (fn) {

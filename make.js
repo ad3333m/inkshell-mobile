@@ -119,7 +119,7 @@ const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p
 // Starts from Onyx (Discord's pure-black theme) for every colour the phone app has (discord-mobile-colors.json, from
 // Discord 355's own definitions, plus the web client's list), then makes it black and white:
 //  - every resting surface is pure black: cards, settings rows, sheets, the text box, inputs;
-//  - Discord's blurple becomes white, and whatever sits on it (button text, the send arrow, ticks) becomes black;
+//  - Discord's blurple becomes dark grey (#444) where it's a fill, white where it's text, an icon or a tint;
 //  - pressed/selected highlights, borders and dividers stay as faint white, so rows and the text box keep their edges;
 //  - red, green, yellow and other meaningful colours stay.
 // A contrast guard then checks every text/icon against the surface it belongs to and flips it to black or white
@@ -143,6 +143,7 @@ const isBrand = c => { const { h, s } = hueSat(c); return s > 0.25 && h >= 225 &
 const isGrey = c => hueSat(c).s < 0.12 || Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b) < 24;
 const kind = (name, cat) => cat === "border" || /BORDER|DIVIDER|SEPARATOR|OUTLINE/.test(name) ? "border"
     : !/BACKGROUND|_BG($|_)|^BG_|SCRIM|OVERLAY|FILL/.test(name) && (cat === "text" || /TEXT|ICON|TINT|FOREGROUND|HEADER|PLACEHOLDER|LOGO|INTERACTIVE_(NORMAL|HOVER|ACTIVE|MUTED)|THUMB_ICON/.test(name)) ? "fg" : "bg";
+const ACCENT = { r: 0x44, g: 0x44, b: 0x44 }; // white reads on it at 9.7:1
 const STATE = /PRESSED|ACTIVE|HOVER|SELECTED|HIGHLIGHT|SCRIM|OVERLAY|SKELETON|SHIMMER|RIPPLE|GRADIENT/;
 
 const oledColor = {}; // name -> { c: {r,g,b}, a, kind }
@@ -153,7 +154,9 @@ for (const [name, d] of Object.entries(defs)) {
     let c = rgba(value), a = d.onyx[1];
     const k = kind(name, d.cat);
     const white = { r: 255, g: 255, b: 255 }, black = { r: 0, g: 0, b: 0 };
-    if (isBrand(c)) c = white; // blurple → white, at the same strength
+    // blurple: solid fills become a dark grey, because Discord also draws hard-coded white icons on them (the selected
+    // server button, Add Friend) and a white fill would hide those; tints and blurple text/icons become white
+    if (isBrand(c)) c = k === "bg" && a >= 1 ? ACCENT : white;
     else if (k === "bg" && isGrey(c)) {
         const lum = luminance(toHex(c, 1));
         // resting dark surfaces, and the faint grey tints that only shade a resting surface, go black
@@ -205,7 +208,7 @@ for (let pass = 0, again = true; again && pass < 5; pass++) {
 const oledSemantic = {};
 for (const [name, v] of Object.entries(oledColor)) { const hx = toHex(v.c, v.a); oledSemantic[name] = [hx, hx]; }
 fs.writeFileSync(__dirname + "/oled.json", JSON.stringify({
-    name: "OLED Black v3",
+    name: "OLED Black v4",
     description: "Black and white: every surface pure black, accents white, text always readable. Leaves the keyboard alone.",
     authors: [{ name: "ad3333m" }],
     spec: 2,
@@ -219,6 +222,8 @@ for (const k of ["BACKGROUND_BASE_LOW", "BACKGROUND_BASE_LOWER", "BACKGROUND_BAS
     if (oledColor[k] && shown(oledColor[k]) !== "#000000") throw new Error(k + " isn't black: " + oledSemantic[k][0]); // translucent black counts: it shows as black
 }
 for (const [k, v] of Object.entries(oledColor)) if (isBrand(v.c)) throw new Error(k + " is still blurple");
+// what Discord draws in plain white on an accent fill must show
+for (const [k, v] of Object.entries(oledColor)) if (v.kind === "bg" && v.c === ACCENT && contrast("#ffffff", shown(v)) < 4.5) throw new Error("white on " + k + " would vanish");
 const readable = { TEXT_DEFAULT: 7, TEXT_STRONG: 7, MOBILE_TEXT_HEADING_PRIMARY: 7, INPUT_TEXT_DEFAULT: 7, TEXT_SUBTLE: 4.5, ICON_DEFAULT: 4.5, INTERACTIVE_TEXT_DEFAULT: 4.5, NAVIGATOR_HEADER_TINT: 4.5, TEXT_MUTED: 3, ICON_MUTED: 3, TEXT_LINK: 4.5, TEXT_BRAND: 4.5 };
 for (const [k, min] of Object.entries(readable)) {
     if (!oledSemantic[k]) continue;
